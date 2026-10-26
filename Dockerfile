@@ -13,7 +13,7 @@ RUN apk add --no-cache libc6-compat openssl
 COPY package*.json ./
 COPY prisma ./prisma/
 
-RUN npm ci --prefer-offline --no-audit
+RUN npm install --prefer-offline --no-audit
 
 COPY . .
 
@@ -50,7 +50,7 @@ EXPOSE 4000
 
 # Docker Healthcheck nativo consultando /api/health
 HEALTHCHECK --interval=20s --timeout=5s --start-period=15s --retries=3 \
-  CMD curl -f http://localhost:4000/api/health || exit 1
+  CMD curl -f http://127.0.0.1:${PORT:-4000}/api/health || exit 1
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 CMD ["node", "dist/main.js"]
