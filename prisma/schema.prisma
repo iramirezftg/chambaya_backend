@@ -1,0 +1,579 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String    @id @default(uuid())
+  name          String
+  email         String    @unique
+  phone         String    @unique
+  passwordHash  String?
+  otpCode       String?
+  otpExpiresAt  DateTime?
+  role          String    @default("CUSTOMER") // CUSTOMER, PROVIDER, SERVICEMAN, ADMIN
+  address       String?
+  avatar        String?
+  walletBalance Float     @default(0.0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  customerBookings Booking[]   @relation("CustomerBookings")
+  provider         Provider?
+  serviceman       Serviceman?
+}
+
+model Category {
+  id            String    @id
+  name          String
+  badge         String
+  image         String
+  description   String
+  servicesCount Int       @default(0)
+
+  services      Service[]
+}
+
+model Provider {
+  id             String    @id
+  name           String
+  owner          String
+  email          String
+  phone          String
+  zone           String
+  rating         Float     @default(5.0)
+  reviewsCount   Int       @default(0)
+  status         String    @default("active") // active, pending, suspended
+  commissionRate Float     @default(15.0)
+  totalEarnings  Float     @default(0.0)
+  walletBalance  Float     @default(0.0)
+  avatar         String
+  clabeAccount   String?   @default("012180001234567890")
+  bankName       String?   @default("BBVA México")
+  rfc            String?   @default("GARM8504128X9")
+  curp           String?   @default("GARM850412HDFRND01")
+  regimenFiscal  String?   @default("625") // Plataformas Tecnológicas
+
+  userId         String?   @unique
+  user           User?     @relation(fields: [userId], references: [id])
+
+  services       Service[]
+  servicemen     Serviceman[]
+  bookings       Booking[]
+  payoutRequests PayoutRequest[]
+  taxRetentions  TaxRetention[]
+  isVerified     Boolean         @default(false)
+  kycVerification KycVerification?
+
+  // Membresías ChambaYa Pro (SaaS Negocios)
+  subscriptionPlan    String          @default("BASIC") // BASIC, PRO, ENTERPRISE
+  subscriptionStatus  String          @default("ACTIVE") // ACTIVE, PAST_DUE, CANCELLED
+  subscriptionRenewsAt DateTime?
+  subscriptionBadge   String?         @default("STANDARD") // STANDARD, DIAMOND, ENTERPRISE
+  subscriptions       Subscription[]
+}
+
+model Serviceman {
+  id                String          @id
+  providerId        String
+  provider          Provider        @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  name              String
+  title             String
+  phone             String
+  rating            Float           @default(5.0)
+  completedJobs     Int             @default(0)
+  avatar            String
+  status            String          @default("available") // available, busy, offline
+  currentLat        Float?
+  currentLng        Float?
+  currentAddress    String?
+  activeBookingId   String?
+  isVerified        Boolean         @default(false)
+  verificationBadge String?         @default("Sin verificar")
+  trustScore        Int             @default(0) // 0-100
+
+  userId            String?         @unique
+  user              User?           @relation(fields: [userId], references: [id])
+
+  bookings          Booking[]
+  kycVerification   KycVerification?
+}
+
+model Service {
+  id            String    @id
+  providerId    String
+  provider      Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  categoryId    String
+  category      Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  title         String
+  description   String
+  price         Float
+  discountPrice Float?
+  duration      String
+  rating        Float     @default(5.0)
+  reviewsCount  Int       @default(0)
+  image         String
+  badge         String
+
+  variants      ServiceVariant[]
+  bookings      Booking[]
+}
+
+model ServiceVariant {
+  id        String   @id @default(uuid())
+  serviceId String
+  service   Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  name      String
+  priceAdd  Float    @default(0.0)
+}
+
+model Booking {
+  id                String    @id
+  customerName      String
+  customerPhone     String
+  customerEmail     String
+  customerAddress   String
+  customerId        String?
+  customer          User?     @relation("CustomerBookings", fields: [customerId], references: [id])
+
+  serviceId         String
+  service           Service   @relation(fields: [serviceId], references: [id])
+  serviceTitle      String
+  serviceImage      String
+
+  providerId        String
+  provider          Provider  @relation(fields: [providerId], references: [id])
+  providerName      String
+
+  servicemanId      String?
+  serviceman        Serviceman? @relation(fields: [servicemanId], references: [id])
+  servicemanName    String?
+  servicemanPhone   String?
+  servicemanAvatar  String?
+
+  status            String    @default("pending") // pending, accepted, assigned, on_the_way, in_progress, completed, cancelled
+  scheduledDate     String
+  scheduledTimeSlot String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  amount            Float
+  materialsCost     Float     @default(0.0)
+  platformFee       Float
+  providerEarnings  Float
+  paymentMethod     String
+  paymentStatus     String    @default("paid")
+  transactionId     String
+  otp               String
+  rating            Float?
+  reviewText        String?
+
+  timeline          BookingTimeline[]
+  chatMessages      ChatMessage[]
+  transactions      PaymentTransaction[]
+  invoice           Invoice?
+  taxRetention      TaxRetention?
+  escrowVault       EscrowVault?
+  evidences         BookingEvidence[]
+  materials         BookingMaterialItem[]
+  isEmergency       Boolean               @default(false)
+  emergencySurcharge Float                @default(0.0)
+  emergencyType     String?
+  emergencyDispatch EmergencyDispatch?
+  couponCode        String?
+  discountAmount    Float                 @default(0.0)
+}
+
+model ChatMessage {
+  id            String    @id @default(uuid())
+  bookingId     String
+  booking       Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  senderId      String
+  senderName    String
+  senderRole    String    // CUSTOMER, SERVICEMAN, PROVIDER, ADMIN
+  text          String
+  attachmentUrl String?
+  createdAt     DateTime  @default(now())
+}
+
+model BookingTimeline {
+  id        String   @id @default(uuid())
+  bookingId String
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  status    String
+  time      String
+  label     String
+}
+
+model PayoutRequest {
+  id         String   @id @default(uuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id])
+  amount     Float
+  status     String   @default("pending") // pending, transferred, rejected
+  clabe      String
+  bank       String
+  createdAt  DateTime @default(now())
+}
+
+model PaymentGateway {
+  id         String   @id
+  key        String   @unique
+  name       String
+  enabled    Boolean  @default(true)
+  feePercent Float    @default(0.0)
+}
+
+model SmsLog {
+  id        String   @id @default(uuid())
+  to        String
+  text      String
+  time      String
+  createdAt DateTime @default(now())
+}
+
+model PaymentTransaction {
+  id            String    @id @default(uuid())
+  bookingId     String
+  booking       Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  gateway       String    // stripe, mercadopago, oxxo, spei, cash
+  amount        Float
+  currency      String    @default("MXN")
+  status        String    @default("pending") // pending, paid, failed, cancelled
+  externalId    String?   // pi_..., mp_..., etc.
+  clientSecret  String?
+  oxxoReference String?   // 14 digits
+  oxxoBarcode   String?
+  oxxoExpiresAt DateTime?
+  speiClabe     String?   // 18 digits STP
+  speiBank      String?   @default("STP")
+  receiptUrl    String?
+  rawPayload    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model WebhookLog {
+  id        String   @id @default(uuid())
+  gateway   String   // stripe, mercadopago, oxxo, spei
+  eventType String   // payment_intent.succeeded, etc.
+  payload   String   // json string
+  processed Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Invoice {
+  id                      String   @id @default(uuid())
+  uuid                    String   @unique // Folio Fiscal SAT
+  bookingId               String   @unique
+  booking                 Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  serie                   String   @default("CHY")
+  folio                   Int
+  rfcEmisor               String   @default("CHY240815MX1")
+  nombreEmisor            String   @default("CHAMBAYA MÉXICO SAPI DE CV")
+  regimenEmisor           String   @default("601") // General de Ley Personas Morales
+  rfcReceptor             String
+  nombreReceptor          String
+  domicilioFiscalReceptor String   // Código Postal (5 dígitos SAT 4.0)
+  regimenReceptor         String   // Clave SAT (ej. 605, 612, 625, 616)
+  usoCfdi                 String   // Clave SAT (ej. G03, S01, CP01)
+  subtotal                Float
+  iva                     Float
+  total                   Float
+  formaPago               String   @default("04") // 04 Tarjeta Crédito, 28 Débito, 03 SPEI, 01 Efectivo
+  metodoPago              String   @default("PUE") // Pago en una sola exhibición
+  claveProdServ           String   @default("72101500") // Mantenimiento y reparaciones de inmuebles
+  claveUnidad             String   @default("E48") // Unidad de servicio
+  fechaTimbrado           DateTime @default(now())
+  selloEmisor             String
+  selloSat                String
+  noCertificadoSat        String   @default("00001000000504465028")
+  cadenaOriginal          String
+  xmlContent              String
+  qrCodeUrl               String
+  status                  String   @default("vigente") // vigente, cancelada
+  createdAt               DateTime @default(now())
+}
+
+model TaxRetention {
+  id               String   @id @default(uuid())
+  bookingId        String   @unique
+  booking          Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  providerId       String
+  provider         Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  grossAmount      Float    // Monto cobrado
+  platformFee      Float    // Comisión ChambaYa (ej. 15%)
+  platformFeeIva   Float    // IVA de la comisión (16%)
+  isrRetentionRate Float    @default(0.01) // 1.0% con RFC
+  isrRetained      Float    // Monto retenido de ISR
+  ivaRetentionRate Float    @default(0.08) // 8.0% con RFC (50% del IVA causado)
+  ivaRetained      Float    // Monto retenido de IVA
+  netPayout        Float    // Monto neto a dispersar en CLABE
+  payoutStatus     String   @default("settled") // settled, pending
+  clabe            String
+  bankName         String
+  createdAt        DateTime @default(now())
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String?
+  role      String   @default("CUSTOMER") // CUSTOMER, SERVICEMAN, PROVIDER, ADMIN
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+}
+
+model PushNotificationLog {
+  id        String   @id @default(uuid())
+  title     String
+  body      String
+  icon      String?  @default("/icons/icon-192.png")
+  url       String?  @default("/mobile")
+  role      String?
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@index([role])
+  @@index([createdAt])
+}
+
+model KycVerification {
+  id                      String      @id @default(uuid())
+  servicemanId            String?     @unique
+  serviceman              Serviceman? @relation(fields: [servicemanId], references: [id], onDelete: Cascade)
+  providerId              String?     @unique
+  provider                Provider?   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  status                  String      @default("PENDING") // PENDING, UNDER_REVIEW, APPROVED, REJECTED
+  trustScore              Int         @default(0) // 0-100
+
+  // Documentos Oficiales Mexicanos
+  curp                    String?
+  curpValidated           Boolean     @default(false)
+  curpDetails             String?     // JSON con desglose: entidad, nacimiento, género
+  rfc                     String?
+  rfcValidated            Boolean     @default(false)
+
+  // Credencial para Votar INE / IFE
+  ineClaveElector         String?
+  ineCic                  String?     // Código de Identificación de Credencial (reverso)
+  ineOcrNumber            String?
+  ineFrontUrl             String?
+  ineBackUrl              String?
+  ineValidated            Boolean     @default(false)
+
+  // Biometría Facial / Selfie con Prueba de Vida
+  selfieUrl               String?
+  faceMatchScore          Float?      // Porcentaje de coincidencia (ej. 98.2%)
+  faceMatchPassed         Boolean     @default(false)
+
+  // Carta de No Antecedentes Penales
+  antecedentesDocUrl      String?
+  antecedentesFolio       String?
+  antecedentesPassed      Boolean     @default(false)
+
+  // Comprobante de Domicilio
+  comprobanteDomicilioUrl String?
+  domicilioPassed         Boolean     @default(false)
+
+  // Dictamen y Auditoría Administrativa
+  reviewedBy              String?
+  reviewNotes             String?
+  reviewedAt              DateTime?
+  submittedAt             DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
+
+  @@index([status])
+}
+
+model EscrowVault {
+  id                    String          @id @default(uuid())
+  bookingId             String          @unique
+  booking               Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  totalAmount           Float
+  providerEarnings      Float
+  platformFee           Float
+  currency              String          @default("MXN")
+  status                String          @default("HELD_IN_ESCROW") // HELD_IN_ESCROW, RELEASED, DISPUTED, REFUNDED_FULL, REFUNDED_PARTIAL
+
+  heldAt                DateTime        @default(now())
+  releasedAt            DateTime?
+  guaranteeWindowHours  Int             @default(48)
+  guaranteeExpiresAt    DateTime?
+
+  insuranceCovered      Boolean         @default(true) // Seguro de Protección contra Daños hasta $25,000 MXN
+  maxInsuranceCoverage  Float           @default(25000.0)
+
+  disputes              EscrowDispute[]
+
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  @@index([status])
+}
+
+model EscrowDispute {
+  id                  String      @id @default(uuid())
+  escrowVaultId       String
+  escrowVault         EscrowVault @relation(fields: [escrowVaultId], references: [id], onDelete: Cascade)
+  bookingId           String
+
+  reason              String      // TRABAJO_DEFECTUOSO, TECNICO_NO_SE_PRESENTO, DANO_MATERIAL, COBRO_INDEBIDO, OTRO
+  description         String
+  evidencePhotos      String?
+
+  status              String      @default("OPEN") // OPEN, UNDER_MEDIATION, RESOLVED_REFUND, RESOLVED_RELEASE, RESOLVED_SPLIT
+  requestedRefund     Float?
+  resolvedRefund      Float?
+  resolvedRelease     Float?
+
+  adminNotes          String?
+  mediatorName        String?     @default("Mediación ChambaYa México")
+
+  customerApproved    Boolean     @default(false)
+  providerApproved    Boolean     @default(false)
+
+  openedAt            DateTime    @default(now())
+  resolvedAt          DateTime?
+
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  @@index([status])
+}
+
+model BookingEvidence {
+  id          String   @id @default(uuid())
+  bookingId   String
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  type        String   // BEFORE, AFTER, IN_PROGRESS
+  photoUrl    String
+  description String?
+  capturedAt  DateTime @default(now())
+  lat         Float?
+  lng         Float?
+
+  @@index([bookingId])
+  @@index([type])
+}
+
+model BookingMaterialItem {
+  id              String    @id @default(uuid())
+  bookingId       String
+  booking         Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  description     String
+  storeName       String    @default("Ferretería Local")
+  ticketPhotoUrl  String
+  amount          Float
+  status          String    @default("PENDING_APPROVAL") // PENDING_APPROVAL, APPROVED, REJECTED, PAID
+  requestedAt     DateTime  @default(now())
+  approvedAt      DateTime?
+  rejectedReason  String?
+
+  @@index([bookingId])
+  @@index([status])
+}
+
+model EmergencyDispatch {
+  id                    String    @id @default(uuid())
+  bookingId             String    @unique
+  booking               Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  severity              String    @default("ALTA") // CRITICA, ALTA, MEDIA
+  incidentDescription   String
+  emergencyAddress      String
+  clientPhone           String
+  targetEtaMinutes      Int       @default(30)
+  dispatchRadiusKm      Float     @default(5.0)
+  broadcastStartedAt    DateTime  @default(now())
+  broadcastExpiresAt    DateTime
+  status                String    @default("SEARCHING") // SEARCHING, ACCEPTED, ON_SITE, RESOLVED, CANCELLED
+  acceptedServicemanId  String?
+  acceptedAt            DateTime?
+  surchargeAmount       Float     @default(250.0)
+
+  @@index([status])
+  @@index([bookingId])
+}
+
+model Coupon {
+  id              String             @id @default(uuid())
+  code            String             @unique
+  title           String
+  description     String?
+  discountType    String             @default("PERCENTAGE") // PERCENTAGE, FIXED_AMOUNT
+  discountValue   Float              // 20 for 20% or 100 for $100 MXN
+  minOrderAmount  Float              @default(0.0)
+  maxDiscount     Float?             // Maximum cap on discount in MXN
+  maxUses         Int                @default(1000)
+  usedCount       Int                @default(0)
+  validUntil      DateTime?
+  isActive        Boolean            @default(true)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  redemptions     CouponRedemption[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+model CouponRedemption {
+  id              String    @id @default(uuid())
+  couponId        String
+  coupon          Coupon    @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  bookingId       String?
+  userId          String?
+  userPhone       String?
+  discountApplied Float
+  originalAmount  Float
+  finalAmount     Float
+  redeemedAt      DateTime  @default(now())
+
+  @@index([couponId])
+  @@index([bookingId])
+}
+
+model ReferralCode {
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  code            String    @unique
+  referrerReward  Float     @default(100.0) // $100 MXN credit to referrer
+  refereeDiscount Float     @default(100.0) // $100 MXN off for referee
+  totalReferred   Int       @default(0)
+  totalEarned     Float     @default(0.0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([code])
+  @@index([userId])
+}
+
+model Subscription {
+  id              String    @id @default(uuid())
+  providerId      String
+  provider        Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  plan            String    // PRO, ENTERPRISE
+  amount          Float     // 499.00 or 1299.00
+  currency        String    @default("MXN")
+  billingInterval String    @default("MONTHLY")
+  status          String    @default("ACTIVE") // ACTIVE, CANCELLED, PAST_DUE
+  startDate       DateTime  @default(now())
+  renewalDate     DateTime
+  paymentMethod   String    @default("CARD") // CARD, SPEI_DOMICILIADO
+  cardLast4       String?   @default("4152")
+  cardBrand       String?   @default("Visa")
+  cfdiInvoiceUrl  String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([providerId])
+  @@index([status])
+}
