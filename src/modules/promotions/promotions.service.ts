@@ -6,7 +6,11 @@ export class PromotionsService implements OnModuleInit {
   constructor(private prisma: PrismaService) {}
 
   async onModuleInit() {
-    await this.seedDefaultPromotions();
+    try {
+      await this.seedDefaultPromotions();
+    } catch (err: any) {
+      console.warn('⚠️ [Promotions] Advertencia al verificar cupones iniciales:', err?.message || err);
+    }
   }
 
   private async seedDefaultPromotions() {

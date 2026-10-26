@@ -45,8 +45,10 @@ COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/dist ./dist
 COPY --from=builder --chown=node:node /app/prisma ./prisma
 
-# Asegurar permisos totales de lectura y escritura para SQLite y subidas de archivos
-RUN chmod -R 777 /app/prisma /app/uploads
+# Asegurar enlaces simbólicos para que cualquier variante de DATABASE_URL encuentre el mismo archivo con tablas
+RUN ln -sf /app/prisma/chambaya.db /app/prisma/prisma/chambaya.db 2>/dev/null || true && \
+    ln -sf /app/prisma/chambaya.db /app/chambaya.db 2>/dev/null || true && \
+    chmod -R 777 /app/prisma /app/uploads
 
 # Ejecutar como usuario sin privilegios 'node' para máxima seguridad
 USER node
@@ -58,4 +60,4 @@ HEALTHCHECK --interval=20s --timeout=5s --start-period=15s --retries=3 \
   CMD curl -f http://127.0.0.1:${PORT:-4000}/api/health || exit 1
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
-CMD ["node", "dist/main.js"]
+CMD ["sh", "-c", "npx prisma db push --skip-generate 2>/dev/null || true; exec node dist/main.js"]
