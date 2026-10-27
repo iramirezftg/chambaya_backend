@@ -17,9 +17,8 @@ RUN npm install --prefer-offline --no-audit
 
 COPY . .
 
-# Generar cliente de Prisma, crear base SQLite con tablas y compilar TypeScript con NestJS
+# Generar cliente de Prisma y compilar TypeScript con NestJS
 RUN npx prisma generate
-RUN DATABASE_URL="file:./chambaya.db" npx prisma db push --skip-generate
 RUN npm run build
 RUN npm prune --production
 
@@ -35,20 +34,16 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=4000
-ENV DATABASE_URL="file:./chambaya.db"
 
-# Crear directorio de persistencia para SQLite / Datos y rutas compatibles
-RUN mkdir -p /app/prisma /app/prisma/prisma /app/uploads && chown -R node:node /app
+# Crear directorio para subidas de archivos
+RUN mkdir -p /app/uploads && chown -R node:node /app
 
 COPY --from=builder --chown=node:node /app/package*.json ./
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/dist ./dist
 COPY --from=builder --chown=node:node /app/prisma ./prisma
 
-# Asegurar enlaces simbólicos para que cualquier variante de DATABASE_URL encuentre el mismo archivo con tablas
-RUN ln -sf /app/prisma/chambaya.db /app/prisma/prisma/chambaya.db 2>/dev/null || true && \
-    ln -sf /app/prisma/chambaya.db /app/chambaya.db 2>/dev/null || true && \
-    chmod -R 777 /app/prisma /app/uploads
+RUN chmod -R 777 /app/uploads
 
 # Ejecutar como usuario sin privilegios 'node' para máxima seguridad
 USER node
@@ -60,4 +55,4 @@ HEALTHCHECK --interval=20s --timeout=5s --start-period=15s --retries=3 \
   CMD curl -f http://127.0.0.1:${PORT:-4000}/api/health || exit 1
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
-CMD ["sh", "-c", "npx prisma db push --skip-generate 2>/dev/null || true; exec node dist/main.js"]
+CMD ["sh", "-c", "npx prisma db push --skip-generate 2>&1 || true; exec node dist/main.js"]
