@@ -21,10 +21,15 @@ export class UploadController {
   @ApiOperation({ summary: 'Consultar proveedor de almacenamiento activo (Cloudinary, S3 o Local)' })
   getStatus() {
     const provider = this.uploadService.getActiveProvider();
+    const envKeys = Object.keys(process.env)
+      .map(k => k.trim())
+      .filter(k => k.toUpperCase().includes('CLOUD') || k.toUpperCase().includes('S3'));
+
     return {
       activeProvider: provider,
       isCloudActive: provider !== 'local',
       cloudName: this.uploadService.getCloudName(),
+      detectedCloudKeys: envKeys,
       supportedProviders: ['cloudinary', 's3', 'local'],
       timestamp: new Date().toISOString(),
     };

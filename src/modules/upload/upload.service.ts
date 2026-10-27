@@ -45,19 +45,26 @@ export class UploadService implements OnModuleInit {
   }
 
   private extractCloudinaryConfig(): { cloudName: string; apiKey: string; apiSecret: string } | null {
-    if (
-      process.env.CLOUDINARY_CLOUD_NAME &&
-      process.env.CLOUDINARY_API_KEY &&
-      process.env.CLOUDINARY_API_SECRET
-    ) {
+    const findEnv = (target: string) => {
+      const entry = Object.entries(process.env).find(
+        ([k]) => k.trim().toUpperCase() === target.toUpperCase()
+      );
+      return entry ? entry[1]?.trim() : undefined;
+    };
+
+    const cName = findEnv('CLOUDINARY_CLOUD_NAME') || findEnv('CLOUD_NAME');
+    const cKey = findEnv('CLOUDINARY_API_KEY') || findEnv('API_KEY');
+    const cSecret = findEnv('CLOUDINARY_API_SECRET') || findEnv('API_SECRET');
+
+    if (cName && cKey && cSecret) {
       return {
-        cloudName: process.env.CLOUDINARY_CLOUD_NAME.trim(),
-        apiKey: process.env.CLOUDINARY_API_KEY.trim(),
-        apiSecret: process.env.CLOUDINARY_API_SECRET.trim(),
+        cloudName: cName,
+        apiKey: cKey,
+        apiSecret: cSecret,
       };
     }
 
-    const raw = process.env.CLOUDINARY_URL || (process.env as any).CLOUDINARY;
+    const raw = findEnv('CLOUDINARY_URL') || findEnv('CLOUDINARY');
     if (!raw) return null;
 
     let clean = raw.trim();
