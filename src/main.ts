@@ -2,6 +2,22 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import path from 'path';
+
+// Sanitizar CLOUDINARY_URL para evitar caídas si contiene comillas, prefijos o formato inválido
+if (process.env.CLOUDINARY_URL) {
+  let val = process.env.CLOUDINARY_URL.trim();
+  if (val.startsWith('CLOUDINARY_URL=')) {
+    val = val.replace(/^CLOUDINARY_URL=\s*/, '');
+  }
+  val = val.replace(/^["']|["']$/g, '').trim();
+  if (!val.startsWith('cloudinary://')) {
+    console.warn(`⚠️ [Cloudinary] CLOUDINARY_URL no comienza con 'cloudinary://'. Se detectó: "${val.slice(0, 15)}...". Desactivando variable para evitar caídas del servidor.`);
+    delete process.env.CLOUDINARY_URL;
+  } else {
+    process.env.CLOUDINARY_URL = val;
+  }
+}
+
 import { AppModule } from './app.module.js';
 
 async function bootstrap() {

@@ -1,8 +1,7 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger, OnModuleInit } from '@nestjs/common';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { v2 as cloudinary } from 'cloudinary';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 export class UploadedFilePayload {
@@ -17,42 +16,72 @@ export class UploadedFilePayload {
 export type StorageProviderType = 'cloudinary' | 's3' | 'local';
 
 @Injectable()
-export class UploadService {
+export class UploadService implements OnModuleInit {
   private readonly logger = new Logger(UploadService.name);
   private readonly uploadsRoot = path.join(process.cwd(), 'uploads');
   private s3Client: S3Client | null = null;
   private s3Bucket: string | null = null;
   private s3Region = 'us-east-1';
   private cloudinaryActive = false;
+  private cloudinary: any = null;
 
   constructor() {
-    this.initStorageProviders();
     this.ensureDirectory(this.uploadsRoot);
     this.ensureDirectory(path.join(this.uploadsRoot, 'evidence'));
     this.ensureDirectory(path.join(this.uploadsRoot, 'kyc'));
     this.ensureDirectory(path.join(this.uploadsRoot, 'tickets'));
     this.ensureDirectory(path.join(this.uploadsRoot, 'general'));
+    this.initStorageProviders();
   }
 
-  private initStorageProviders() {
-    // 1. Cloudinary
+  async onModuleInit() {
+    await this.initStorageProviders();
+  }
+
+  private async initStorageProviders() {
+    // 1. Sanitizar y cargar Cloudinary con protecciones contra valores malformados
     if (process.env.CLOUDINARY_URL) {
-      cloudinary.config();
-      this.cloudinaryActive = true;
-      this.logger.log('☁️ Almacenamiento en Nube: Cloudinary configurado mediante CLOUDINARY_URL');
-    } else if (
-      process.env.CLOUDINARY_CLOUD_NAME &&
-      process.env.CLOUDINARY_API_KEY &&
-      process.env.CLOUDINARY_API_SECRET
-    ) {
-      cloudinary.config({
-        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-        api_key: process.env.CLOUDINARY_API_KEY,
-        api_secret: process.env.CLOUDINARY_API_SECRET,
-        secure: true,
-      });
-      this.cloudinaryActive = true;
-      this.logger.log(`☁️ Almacenamiento en Nube: Cloudinary configurado para cloud_name "${process.env.CLOUDINARY_CLOUD_NAME}"`);
+      let raw = process.env.CLOUDINARY_URL.trim();
+      if (raw.startsWith('CLOUDINARY_URL=')) {
+        raw = raw.replace(/^CLOUDINARY_URL=\s*/, '');
+      }
+      raw = raw.replace(/^["']|["']$/g, '').trim();
+
+      if (!raw.startsWith('cloudinary://')) {
+        this.logger.warn(`⚠️ [Cloudinary] El valor de CLOUDINARY_URL no comienza con 'cloudinary://'. Se detectó: "${raw.slice(0, 15)}...". Desactivando Cloudinary para evitar caídas del servidor. Usa formato: cloudinary://API_KEY:API_SECRET@CLOUD_NAME`);
+        delete process.env.CLOUDINARY_URL;
+      } else {
+        process.env.CLOUDINARY_URL = raw;
+      }
+    }
+
+    try {
+      if (
+        process.env.CLOUDINARY_URL ||
+        (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET)
+      ) {
+        const cldModule = await import('cloudinary');
+        this.cloudinary = cldModule.v2 || cldModule.default?.v2 || cldModule;
+
+        if (process.env.CLOUDINARY_URL) {
+          this.cloudinary.config();
+          this.cloudinaryActive = true;
+          this.logger.log('☁️ Almacenamiento en Nube: Cloudinary conectado exitosamente');
+        } else if (process.env.CLOUDINARY_CLOUD_NAME) {
+          this.cloudinary.config({
+            cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+            api_key: process.env.CLOUDINARY_API_KEY,
+            api_secret: process.env.CLOUDINARY_API_SECRET,
+            secure: true,
+          });
+          this.cloudinaryActive = true;
+          this.logger.log(`☁️ Almacenamiento en Nube: Cloudinary configurado para "${process.env.CLOUDINARY_CLOUD_NAME}"`);
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn('⚠️ [Cloudinary] Error al inicializar Cloudinary, se activará almacenamiento local:', err?.message || err);
+      this.cloudinaryActive = false;
+      this.cloudinary = null;
     }
 
     // 2. AWS S3 / S3-Compatible (Cloudflare R2, Supabase Storage, DigitalOcean Spaces)
@@ -193,10 +222,10 @@ export class UploadService {
     const safeId = `${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
 
     // A) Cloudinary admite data URIs de Base64 directamente
-    if (this.cloudinaryActive) {
+    if (this.cloudinaryActive && this.cloudinary) {
       try {
         const formattedUri = base64Data.startsWith('data:') ? base64Data : `data:image/jpeg;base64,${base64Data}`;
-        const uploadResult = await cloudinary.uploader.upload(formattedUri, {
+        const uploadResult = await this.cloudinary.uploader.upload(formattedUri, {
           folder: `chambaya/${cleanCategory}`,
           public_id: `${filenameHint}_${safeId}`,
           resource_type: 'auto',
@@ -280,14 +309,15 @@ export class UploadService {
    */
   private uploadBufferToCloudinary(buffer: Buffer, category: string, filename: string): Promise<string> {
     return new Promise((resolve, reject) => {
+      if (!this.cloudinary) return reject(new Error('Cloudinary no inicializado'));
       const publicId = path.parse(filename).name;
-      const uploadStream = cloudinary.uploader.upload_stream(
+      const uploadStream = this.cloudinary.uploader.upload_stream(
         {
           folder: `chambaya/${category}`,
           public_id: publicId,
           resource_type: 'auto',
         },
-        (error, result) => {
+        (error: any, result: any) => {
           if (error) return reject(error);
           resolve(result?.secure_url || result?.url || '');
         },
