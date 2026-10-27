@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Get,
   UseInterceptors,
   UploadedFile,
   Body,
@@ -15,6 +16,18 @@ import { UploadService, UploadedFilePayload } from './upload.service.js';
 @Controller('upload')
 export class UploadController {
   constructor(private readonly uploadService: UploadService) {}
+
+  @Get('status')
+  @ApiOperation({ summary: 'Consultar proveedor de almacenamiento activo (Cloudinary, S3 o Local)' })
+  getStatus() {
+    const provider = this.uploadService.getActiveProvider();
+    return {
+      activeProvider: provider,
+      isCloudActive: provider !== 'local',
+      supportedProviders: ['cloudinary', 's3', 'local'],
+      timestamp: new Date().toISOString(),
+    };
+  }
 
   @Post()
   @ApiOperation({ summary: 'Subir archivo de evidencia, ticket de ferretería o documento KYC' })

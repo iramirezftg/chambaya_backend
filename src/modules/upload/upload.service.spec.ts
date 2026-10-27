@@ -42,4 +42,8 @@ describe('UploadService', () => {
 
     await expect(uploadService.handleFileUpload(invalidFile, 'general')).rejects.toThrow();
   });
+
+  it('debe retornar proveedor local por defecto si no hay credenciales cloud', () => {
+    expect(uploadService.getActiveProvider()).toBe('local');
+  });
 });
