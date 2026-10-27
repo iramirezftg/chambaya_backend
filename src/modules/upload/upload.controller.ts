@@ -24,6 +24,7 @@ export class UploadController {
     return {
       activeProvider: provider,
       isCloudActive: provider !== 'local',
+      cloudName: this.uploadService.getCloudName(),
       supportedProviders: ['cloudinary', 's3', 'local'],
       timestamp: new Date().toISOString(),
     };
